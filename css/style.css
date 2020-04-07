@@ -101,6 +101,7 @@ body {
 
 .tasks__container {
     height: 400px;
+    overflow: auto;
     margin-top: 10px;
     border: 3px solid #9F94A0;
     border-radius: 3px;
@@ -138,6 +139,10 @@ body {
     background-color: white;
     min-height: 30px;
     cursor: pointer;
+}
+
+.task__item_phantom {
+    opacity: .3;
 }
 
 .task__item_dragging {
