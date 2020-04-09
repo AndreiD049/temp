@@ -1,195 +1,98 @@
-/* realize the drag-n-drop functionality for tasks */
-
-// const tasks = document.querySelectorAll("div.task__item_border");
-
-function taskOnMouseDown(e) {
-    let fantomFrom = this.cloneNode(true);
-    this.after(fantomFrom);
-    fantomFrom.style.opacity = .2;
-    this.style.width = this.getBoundingClientRect().width + "px";
-    this.style.position = "absolute";
-    let coords = getCoords(this);
-    let shiftX = e.pageX - coords.left;
-    let shiftY = e.pageY - coords.top;
-    let target = this;
-    // move the element under the mouse
-    moveTo(this, e);
-
-    // add another event listener
-    document.addEventListener("mousemove", onMouseMove)
-
-    document.addEventListener("mouseup", onMouseUp)
-    
-    
-    function onMouseUp(e) {
-        console.log("mouseup")
-        document.removeEventListener("mousemove", onMouseMove);
-        document.removeEventListener("mouseup", onMouseUp);
-        // check if item can be dropped here, if yes, append
-        target.style = null;
-        fantomFrom.parentNode.removeChild(fantomFrom);
+function dragNDropGroup(options) {
+    let state = {
+        currentEvent: null,
+        target: null,
+        targetDropable: null,
+        dragableUnder: null,
+        dropableUnder: null,
+        shiftX: 0,
+        shiftY: 0,
+        phantomFromId: options.phantomFromId || "__PHANTOM__EL__FROM__",
+        phantomFrom: null,
+        phantomToId: options.phantomToId || "__PHANTOM__EL__TO__",
+        phantomTo: null,
     }
 
-    function onMouseMove(e) {
-        target.hidden = true;
-        console.log(document.elementFromPoint(e.clientX, e.clientY).className);
-        target.hidden = false;
-        moveTo(target, e);
-    }
+    // Starts
+    validateOptions();
+    initEventListeners();
 
-    function moveTo(el, e) {
-        el.style.left = e.pageX - shiftX + "px";
-        el.style.top = e.pageY - shiftY + "px";
-    }
+    /* defining helper functions */
 
-    function getCoords(el) {
-        // gets the coord in the document, together with scrolled offset
-        let box = el.getBoundingClientRect();
-        return {
-            top: box.top + pageYOffset,
-            left: box.left + pageXOffset,
-        }
-    }
-}
-
-// set the events for all tasks 
-// tasks.forEach((task) => {
-//     task.addEventListener("mousedown", taskOnMouseDown);
-// })
-
-class dragDropGroup {
-    _defaultDragableSel = "[data-dragable]";
-    _defaultDropableSel = "[data-dropable]";
-
-    constructor(options) {
-        this.options = options;
-        this.dragableSelectors = options.dragableSelectors instanceof Array ?
-                                 options.dragableSelectors : 
-                                 [this._defaultDragableSel];
-        this.dropableSelectors = options.dropableSelectors instanceof Array ? 
-                                 options.dropableSelectors :
-                                 [this._defaultDropableSel];
-
-        this.init();
-    }
-
-    init() {
-        // for all dropable elements set the needed events
-        this.dropableSelectors.forEach(selector => {
+    function initEventListeners() {
+        options.dropableSelectors.forEach(selector => {
             let elements = document.querySelectorAll(selector);
             elements.forEach(element => {
-                element.addEventListener("mousedown",  this.onMouseDown.bind(element, this));
+                element.addEventListener("mousedown",  onMouseDown);
             })
         })
     }
 
-    onMouseDown(thisArg, e) {
-        let target = thisArg.getValidDragable(e.target) 
-        if (target) {
-            // can be dragged
-            let coords = thisArg.getCoords(target);
-            // create a phantom element in the from container
-            thisArg.createPhantomFrom(target);
-            // set temporary styles so it can be dragged
-            target.style.width = target.offsetWidth + "px";
-            target.style.position = "absolute";
-            let shiftX = e.pageX - coords.left;
-            let shiftY = e.pageY - coords.top;
-
-            try {
-                thisArg.moveTo(target, e, shiftX, shiftY);
-
-                // register the mouseMove event, we will need a reference to those functions in order to unregister the event
-                thisArg.mouseMoveEvent = thisArg.onMouseMove.bind(target, thisArg, shiftX, shiftY);
-                thisArg.mouseUpEvent = thisArg.onMouseUp.bind(target, thisArg);
-                document.addEventListener("mouseup", thisArg.mouseUpEvent);
-                document.addEventListener("mousemove", thisArg.mouseMoveEvent);
-            } catch (e) {
-                thisArg.cleanUp(target);
+    function onMouseDown(e) {
+        try {
+            updateState(e.target, e);
+            setStyle();
+            if (state.target) {
+                createPhantomFrom();
+                document.addEventListener("mouseup", onMouseUp, {once: true});
+                document.addEventListener("mousemove", onMouseMove);
             }
+        } catch (e) {
+            console.error(e);
+            cleanUp();
         }
     }
 
-    moveTo(el, e, shiftX, shiftY) {
-        el.style.left = e.pageX - shiftX + "px";
-        el.style.top = e.pageY - shiftY + "px";
+    function onMouseMove(e) {
+        try {
+            updateState(state.target, e);
+            moveTo(state.target, e);
+            createPhantomTo();
+        } catch (e) {
+            console.error(e);
+            cleanUp();
+        }
     }
 
-    onMouseUp(thisArg, e) {
+    function onMouseUp(e) {
         try {
-            let elementUnder = thisArg.getElementUnderMouse(this, e.clientX, e.clientY);
-            // check if the element is droppable
-            let dropableParent = thisArg.getValidDropable(elementUnder);
-            let dragableUnder = thisArg.getValidDragable(elementUnder);
-            if (dropableParent && !dragableUnder) {
-                // drop it in the parrent
-                dropableParent.appendChild(this);
-            } else if (dragableUnder) {
-                thisArg.insertRelated(this, dragableUnder, e);
+            if (state.dropableUnder) {
+                if (state.dragableUnder) {
+                    insertRelated(state.target, state.dragableUnder);
+                } else {
+                    state.dropableUnder.appendChild(state.target);
+                }
             }
         } finally {
-            thisArg.cleanUp(this);
+            cleanUp();
         }
     }
 
-    onMouseMove(thisArg, shiftX, shiftY, e) {
-        try {
-            thisArg.moveTo(this, e, shiftX, shiftY);
-            let elementUnder = thisArg.getElementUnderMouse(this, e.clientX, e.clientY);
-            thisArg.createPhantomTo(elementUnder, this, e);
-        } catch (e) {
-            thisArg.cleanUp(this);
-        }
-    }
-
-    getValidDragable(el) {
-        for (let selector of this.dragableSelectors) {
-            let result = el.closest(selector);
-            if (result) {
-                return result;
+    function createPhantomFrom() {
+        if (options.phantomFrom) {
+            var copy = state.target.cloneNode(true);
+            dropStyle(copy);
+            copy.id = state.phantomFromId;
+            if (options.phantomFromClass) {
+                copy.classList.add(options.phantomFromClass);
             }
-        }
-        return null;
-    }
-
-    getValidDropable(el) {
-        for(let selector of this.dropableSelectors) {
-            let result = el.closest(selector);
-            if (result) {
-                return result;
-            }
-        }
-        return null;
-    }
-
-    createPhantomFrom(el) {
-        // creates a Phantom element from
-        if (this.options.phantomFrom) {
-            var copy = el.cloneNode(true);
-            copy.id = "__PHANTOM__EL__FROM__";
-            if (this.options.phantomFromClass) {
-                copy.classList.add(this.options.phantomFromClass);
-            }
-            el.after(copy);
+            state.target.after(copy);
+            state.phantomFrom = copy;
         }
     }
 
-    createPhantomTo(elUnder, el, e) {
-        // creates a Phantom element to
-        if (this.options.phantomTo) {
-            let dragable = this.getValidDragable(elUnder);
-            let dropable = this.getValidDropable(elUnder);
-
-            let alreadyExists = document.getElementById("__PHANTOM__EL__TO__");
-            if (alreadyExists) {
-                copy = alreadyExists;
+    function createPhantomTo() {
+        if (options.phantomTo && state.target) {
+            let copy;
+            if (state.phantomTo) {
+                copy = state.phantomTo;
             } else {
-                var copy = el.cloneNode(true);
-                copy.style.position = null;
-                copy.id = "__PHANTOM__EL__TO__"
+                copy = state.target.cloneNode(true);
+                dropStyle(copy);
+                copy.id = state.phantomToId
 
-                if (this.options.phantomToClass) {
-                    copy.classList.add(this.options.phantomToClass);
+                if (options.phantomToClass) {
+                    copy.classList.add(options.phantomToClass);
                 }
             }
             /*
@@ -200,45 +103,144 @@ class dragDropGroup {
             4. element is dropable, and is not the initial one, but we don't have any dragable under mouse
             5. else - do nothing.
             */
-            let elFrom = document.getElementById("__PHANTOM__EL__FROM__");
-            if (dropable && dragable && dropable.contains(el)) {
-                this.removeIfIdExists("__PHANTOM__EL__TO__");
-                this.insertRelated(elFrom, dragable, e);
-            } else if (dropable && dropable.contains(el)) {
-                this.removeIfIdExists("__PHANTOM__EL__TO__");
-                dropable.appendChild(elFrom);
-            } else if (dropable && dragable && dragable.id !== "__PHANTOM__EL__TO__") {
-                this.insertRelated(copy, dragable, e);
-            } else if (dropable && !dropable.contains(el) && !dragable) {
-                dropable.appendChild(copy);
+            if (state.dropableUnder) {
+                if (state.dropableUnder.contains(state.target)) {
+                    // we are still in the parent dropable
+                    // remove any existing phantomTo in case it exist
+                    if (state.phantomTo) {
+                        state.phantomTo.remove();
+                    }
+                    if (!state.phantomFrom) {
+                        createPhantomFrom();
+                    }
+                    if (state.dragableUnder) {
+                        insertRelated(state.phantomFrom, state.dragableUnder);
+                    } else {
+                        state.dropableUnder.appendChild(state.phantomFrom);
+                    }
+                } else if (state.dropableUnder) {
+                    // we are in a dropable, but not the original one
+                    if (state.dragableUnder) {
+                        insertRelated(copy, state.dragableUnder);
+                    } else {
+                        state.dropableUnder.appendChild(state.phantomTo);
+                    }
+                }
+                state.phantomTo = copy;
             }
         }
     }
 
-    removeIfIdExists(id) {
-        let el = document.getElementById(id);
-        if (el) el.remove();
+    // update the state according to the element passed as argument
+    // supposedly we're now dragging this @el
+    // @e is the mouse event we're currently checking
+    function updateState(el, e) {
+        if (!state.target) {
+            state.target = getValidDragable(el);
+        }
+        if (!state.targetDropable) {
+            state.targetDropable = getValidDropable(state.target);
+        }
+        if (!state.shiftX && !state.shiftY && state.target) {
+            let coords = getCoords(state.target);
+            state.shiftX = e.pageX - coords.left;
+            state.shiftY = e.pageY - coords.top;
+        }
+        state.currentEvent = e;
+        let elementUnder = getElementUnderMouse(e);
+        state.dragableUnder = getValidDragable(elementUnder);
+        state.dropableUnder = getValidDropable(elementUnder);
     }
 
-    getElementUnderMouse(el, x, y) {
-        let result;
-        el.hidden = true;
-        result = document.elementFromPoint(x, y)
-        el.hidden = false;
-        return result;
+    function dropState() {
+        state.currentEvent = null;
+        state.target = null;
+        state.targetDropable = null;
+        state.dragableUnder = null;
+        state.dropableUnder = null;
+        state.shiftX = 0;
+        state.shiftY = 0;
+        destroyPhantoms();
     }
 
-    insertRelated(el, relatedEl, e) {
-        let coords = relatedEl.getBoundingClientRect();
-        let clientMiddle = coords.top + relatedEl.clientHeight / 2;
-        if (e.clientY < clientMiddle) {
-            relatedEl.before(el);
-        } else {
-            relatedEl.after(el);
+    function validateOptions() {
+        if (!options.dropableSelectors instanceof Array) {
+            throw new Error("dropableSelectors should be an array of strings.");
+        }
+
+        if (!options.dragableSelectors instanceof Array) {
+            throw new Error("dragableSelectors should be an array of strings");
         }
     }
 
-    getCoords(el) {
+    function moveTo(el, e) {
+        el.style.left = e.pageX - state.shiftX + "px";
+        el.style.top = e.pageY - state.shiftY + "px";
+    }
+
+    // get the closest dragable element
+    function getValidDragable(target) {
+        if (!target) {
+            return null;
+        }
+
+        for (let selector of options.dragableSelectors) {
+            let result = target.closest(selector);
+            if (result) {
+                return result;
+            }
+        }
+        return null;
+    }
+
+    // get the closest dropable element
+    function getValidDropable(target) {
+        if (!target) {
+            return null;
+        }
+
+        for(let selector of options.dropableSelectors) {
+            let result = target.closest(selector);
+            if (result) {
+                return result;
+            }
+        }
+        return null;
+    }
+
+    // @e is the mouse event we're checking
+    function getElementUnderMouse(e) {
+        if (!state.target) {
+            return null;
+        }
+        let result;
+        state.target.hidden = true;
+        result = document.elementFromPoint(e.clientX, e.clientY)
+        state.target.hidden = false;
+        return result;
+    }
+
+    function setStyle(el) {
+        let target = el || state.target;
+        if (!target) {
+            return null;
+        }
+        target.style.width = target.clientWidth + "px";
+        target.style.position = "absolute";
+    }
+
+    function dropStyle(el) {
+        let target = el || state.target;
+        if (!target) {
+            return null;
+        }
+        target.style.width = null;
+        target.style.position = null;
+        target.style.top = null;
+        target.style.left = null;
+    }
+
+    function getCoords(el) {
         // gets the coord in the document, together with scrolled offset
         let box = el.getBoundingClientRect();
         return {
@@ -247,19 +249,34 @@ class dragDropGroup {
         }
     }
 
-    cleanUp(el) {
-        // cleanup code
-        let elTo = document.getElementById("__PHANTOM__EL__TO__");
-        if (elTo) elTo.remove();
-        let elFrom = document.getElementById("__PHANTOM__EL__FROM__");
-        if (elFrom) elFrom.remove();
-        el.style = null;
-        document.removeEventListener("mousemove", this.mouseMoveEvent);
-        document.removeEventListener("mouseup", this.mouseUpEvent);
+    function cleanUp() {
+        dropStyle();
+        dropState();
+        document.removeEventListener("mouseup", onMouseUp);
+        document.removeEventListener("mousemove", onMouseMove);
+    }
+    
+    function destroyPhantoms() {
+        let phantomFrom, phantomTo;
+        phantomFrom = document.getElementById(state.phantomFromId);
+        phantomTo = document.getElementById(state.phantomToId);
+        phantomFrom && phantomFrom.remove();
+        phantomTo && phantomTo.remove();
+    }
+
+    function insertRelated(el, relatedEl) {
+        let coords = relatedEl.getBoundingClientRect();
+        let clientMiddle = coords.top + relatedEl.clientHeight / 2;
+        if (state.currentEvent.clientY < clientMiddle) {
+            relatedEl.before(el);
+        } else {
+            relatedEl.after(el);
+        }
     }
 }
 
-let dropGroup = new dragDropGroup({
+
+dragNDropGroup({
     dragableSelectors: [".task__item_border"],
     dropableSelectors: [".tasks__container"],
     phantomFrom: true,
