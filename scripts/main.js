@@ -1,6 +1,7 @@
 function dragNDropGroup(options) {
     let state = {
         currentEvent: null,
+        direction: options.direction || 'vertical',
         target: null,
         targetDropable: null,
         dragableUnder: null,
@@ -33,13 +34,13 @@ function dragNDropGroup(options) {
             updateState(e.target, e);
             setStyle();
             if (state.target) {
+                moveTo(state.target, e);
                 createPhantomFrom();
                 document.addEventListener("mouseup", onMouseUp, {once: true});
                 document.addEventListener("mousemove", onMouseMove);
             }
         } catch (e) {
             console.error(e);
-        } finally {
             destroyPhantoms();
         }
     }
@@ -56,8 +57,8 @@ function dragNDropGroup(options) {
     }
 
     function onMouseUp(e) {
-        console.log("mouseup");
         try {
+            updateState(state.target, e);
             if (state.dropableUnder) {
                 if (state.dragableUnder) {
                     insertRelated(state.target, state.dragableUnder);
@@ -65,6 +66,8 @@ function dragNDropGroup(options) {
                     state.dropableUnder.appendChild(state.target);
                 }
             }
+        } catch (e) {
+            console.error(e);
         } finally {
             cleanUp();
         }
@@ -173,6 +176,10 @@ function dragNDropGroup(options) {
         if (!options.dragableSelectors instanceof Array) {
             throw new Error("dragableSelectors should be an array of strings");
         }
+        
+        if (options.direction && ["horizontal", "vertical"].indexOf(options.direction) === -1) {
+            throw new Error("direction should be either 'horizontal' or 'vertical'");
+        }
     }
 
     function moveTo(el, e) {
@@ -271,8 +278,10 @@ function dragNDropGroup(options) {
 
     function insertRelated(el, relatedEl) {
         let coords = relatedEl.getBoundingClientRect();
-        let clientMiddle = coords.top + relatedEl.clientHeight / 2;
-        if (state.currentEvent.clientY < clientMiddle) {
+        let clientMiddle = state.direction === "vertical" ? coords.top + relatedEl.clientHeight / 2 :
+                                                            coords.left + relatedEl.clientWidth / 2;
+        let referencePoint = state.direction === "vertical" ? state.currentEvent.clientY : state.currentEvent.clientX;
+        if (referencePoint < clientMiddle) {
             relatedEl.before(el);
         } else {
             relatedEl.after(el);
@@ -288,4 +297,14 @@ dragNDropGroup({
     phantomFromClass: "task__item_phantom",
     phantomTo: true,
     phantomToClass: "task__item_phantom",
+});
+
+dragNDropGroup({
+    dragableSelectors: [".random__item"],
+    dropableSelectors: [".random__container"],
+    phantomFrom: true,
+    phantomFromClass: "task__item_phantom",
+    phantomTo: true,
+    phantomToClass: "task__item_phantom",
+    direction: "horizontal",
 });
