@@ -39,7 +39,8 @@ function dragNDropGroup(options) {
             }
         } catch (e) {
             console.error(e);
-            cleanUp();
+        } finally {
+            destroyPhantoms();
         }
     }
 
@@ -55,6 +56,7 @@ function dragNDropGroup(options) {
     }
 
     function onMouseUp(e) {
+        console.log("mouseup");
         try {
             if (state.dropableUnder) {
                 if (state.dragableUnder) {
@@ -257,11 +259,14 @@ function dragNDropGroup(options) {
     }
     
     function destroyPhantoms() {
-        let phantomFrom, phantomTo;
-        phantomFrom = document.getElementById(state.phantomFromId);
-        phantomTo = document.getElementById(state.phantomToId);
-        phantomFrom && phantomFrom.remove();
-        phantomTo && phantomTo.remove();
+        document.querySelectorAll("#" + state.phantomFromId).forEach(el => {
+            el.remove();
+        });
+        document.querySelectorAll("#" + state.phantomToId).forEach(el => {
+            el.remove();
+        });
+        state.phantomFrom = null;
+        state.phantomTo = null;
     }
 
     function insertRelated(el, relatedEl) {
