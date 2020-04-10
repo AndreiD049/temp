@@ -1,5 +1,6 @@
 function dragNDropGroup(options) {
     let state = {
+        name: options.name || "custom",
         currentEvent: null,
         direction: options.direction || 'vertical',
         target: null,
@@ -12,6 +13,16 @@ function dragNDropGroup(options) {
         phantomFrom: null,
         phantomToId: options.phantomToId || "__PHANTOM__EL__TO__",
         phantomTo: null,
+        _firstCall: true,
+    }
+
+    let events = {
+        dragstart: `${state.name}_dragstart`,
+        dragend: `${state.name}_dragend`,
+        beforedrop: `${state.name}_beforedrop`,
+        dropped: `${state.name}_dropped`,
+        enterdropable: `${state.name}_enter_dropable`,
+        leavedropable: `${state.name}_leave_dropable`
     }
 
     // Starts
@@ -38,6 +49,7 @@ function dragNDropGroup(options) {
                 createPhantomFrom();
                 document.addEventListener("mouseup", onMouseUp, {once: true});
                 document.addEventListener("mousemove", onMouseMove);
+                dispatchCustomEvent(events.dragstart, state, {bubbles: true});
             }
         } catch (e) {
             console.error(e);
@@ -59,18 +71,26 @@ function dragNDropGroup(options) {
     function onMouseUp(e) {
         try {
             updateState(state.target, e);
-            if (state.dropableUnder) {
+            if (state.dropableUnder && dispatchCustomEvent(events.beforedrop, state, {bubbles: true, cancelable: true})) {
                 if (state.dragableUnder) {
                     insertRelated(state.target, state.dragableUnder);
                 } else {
                     state.dropableUnder.appendChild(state.target);
                 }
+                setTimeout(dispatchCustomEvent.bind({}, events.dropped, {...state}, {bubbles: true}));
             }
         } catch (e) {
             console.error(e);
         } finally {
+            // dispatch the dragEnd event
+            setTimeout(dispatchCustomEvent.bind({}, events.dragend, {...state}, {bubbles: true}));
             cleanUp();
         }
+    }
+
+    function dispatchCustomEvent(eventName, state, options) {
+        let event = new CustomEvent(eventName, {...options, detail: state});
+        return state.target.dispatchEvent(event);
     }
 
     function createPhantomFrom() {
@@ -154,7 +174,8 @@ function dragNDropGroup(options) {
         state.currentEvent = e;
         let elementUnder = getElementUnderMouse(e);
         state.dragableUnder = getValidDragable(elementUnder);
-        state.dropableUnder = getValidDropable(elementUnder);
+        state.dropableUnder = handleDropableEnterLeave(getValidDropable(elementUnder)); // dispatch dropable enter/leave events and return the dropable
+        state._firstCall = false;
     }
 
     function dropState() {
@@ -165,6 +186,7 @@ function dragNDropGroup(options) {
         state.dropableUnder = null;
         state.shiftX = 0;
         state.shiftY = 0;
+        state._firstCall = true;
         destroyPhantoms();
     }
 
@@ -215,6 +237,15 @@ function dragNDropGroup(options) {
             }
         }
         return null;
+    }
+
+    function handleDropableEnterLeave(dropable) {
+        if (!state.dropableUnder && dropable && !state._firstCall) {
+            dispatchCustomEvent(events.enterdropable, {...state, dropableUnder: dropable}, {bubbles: true});
+        } else if (state.dropableUnder && !dropable) {
+            dispatchCustomEvent(events.leavedropable, {...state}, {bubbles: true});
+        }
+        return dropable;
     }
 
     // @e is the mouse event we're checking
@@ -291,6 +322,7 @@ function dragNDropGroup(options) {
 
 
 dragNDropGroup({
+    name: "custom",
     dragableSelectors: [".task__item_border"],
     dropableSelectors: [".tasks__container"],
     phantomFrom: true,
@@ -300,6 +332,7 @@ dragNDropGroup({
 });
 
 dragNDropGroup({
+    name: "another",
     dragableSelectors: [".random__item"],
     dropableSelectors: [".random__container"],
     phantomFrom: true,
@@ -308,3 +341,31 @@ dragNDropGroup({
     phantomToClass: "task__item_phantom",
     direction: "horizontal",
 });
+
+document.addEventListener("another_dragstart", function(e) {
+    e.detail.targetDropable.classList.add("item_dragstart");
+})
+
+document.addEventListener("another_dragend", function(e) {
+    e.detail.targetDropable.classList.remove("item_dragstart");
+    console.log("dragend");
+})
+
+document.addEventListener("custom_beforedrop", function(e) {
+    console.log("beforedrop");
+})
+
+document.addEventListener("custom_dropped", function(e) {
+    console.log("dropped");
+    e.detail.dropableUnder.classList.remove("enter_dropable");
+})
+
+document.addEventListener("custom_enter_dropable", function(e) {
+    console.log("enetered dropable", e.detail);
+    e.detail.dropableUnder.classList.add("enter_dropable");
+});
+
+document.addEventListener("custom_leave_dropable", function(e) {
+    console.log("leaved dropable");
+    e.detail.dropableUnder.classList.remove("enter_dropable");
+})
