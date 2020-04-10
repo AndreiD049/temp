@@ -17,6 +17,7 @@ function dragNDropGroup(options) {
     }
 
     let events = {
+        beforestart: `${state.name}_before_start`,
         dragstart: `${state.name}_dragstart`,
         dragend: `${state.name}_dragend`,
         beforedrop: `${state.name}_beforedrop`,
@@ -43,13 +44,13 @@ function dragNDropGroup(options) {
     function onMouseDown(e) {
         try {
             updateState(e.target, e);
-            setStyle();
-            if (state.target) {
+            if (state.target && dispatchCustomEvent(events.beforestart, {...state}, {bubbles: true, cancelable: true})) {
+                setStyle();
                 moveTo(state.target, e);
                 createPhantomFrom();
                 document.addEventListener("mouseup", onMouseUp, {once: true});
                 document.addEventListener("mousemove", onMouseMove);
-                dispatchCustomEvent(events.dragstart, state, {bubbles: true});
+                dispatchCustomEvent(events.dragstart, {...state}, {bubbles: true});
             }
         } catch (e) {
             console.error(e);
@@ -71,7 +72,7 @@ function dragNDropGroup(options) {
     function onMouseUp(e) {
         try {
             updateState(state.target, e);
-            if (state.dropableUnder && dispatchCustomEvent(events.beforedrop, state, {bubbles: true, cancelable: true})) {
+            if (state.dropableUnder && dispatchCustomEvent(events.beforedrop, {...state}, {bubbles: true, cancelable: true})) {
                 if (state.dragableUnder) {
                     insertRelated(state.target, state.dragableUnder);
                 } else {
@@ -340,6 +341,10 @@ dragNDropGroup({
     phantomTo: true,
     phantomToClass: "task__item_phantom",
     direction: "horizontal",
+});
+
+document.addEventListener("custom_before_start", function(e) {
+    console.log("before_start dragging");
 });
 
 document.addEventListener("another_dragstart", function(e) {
